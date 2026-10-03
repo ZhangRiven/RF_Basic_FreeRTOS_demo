@@ -51,20 +51,34 @@ set(CMAKE_OBJDUMP "${TOOLCHAIN_FOLDER}/bin/${TOOLCHAIN_PREFIX}objdump")
 set(CMAKE_SIZE "${TOOLCHAIN_FOLDER}/bin/${TOOLCHAIN_PREFIX}size")
 set(CMAKE_AR "${TOOLCHAIN_FOLDER}/bin/${TOOLCHAIN_PREFIX}ar")
 
-set(PROJECT_NAME "FreeRTOS")
-set(TARGET_ARTIFACT "FreeRTOS.elf")
+set(PROJECT_NAME "RF_Basic_FreeRTOS")
+set(TARGET_ARTIFACT "RF_Basic_FreeRTOS.elf")
+set(RF_TEST_MODE "1" CACHE STRING "RF test mode: 0=RX, 1=TX")
 
 set(CMAKE_C_OUTPUT_EXTENSION .o)
 set(CMAKE_CXX_OUTPUT_EXTENSION .o)
 
 project("${PROJECT_NAME}" LANGUAGES C ASM CXX)
 
+# The vendor archive combines RFRole with the BLE/TMOS stack.  Extract its
+# members into the build tree so the RF-only link can explicitly exclude the
+# TMOS scheduler and BLE task dispatcher.
+set(RF_VENDOR_OBJECT_DIR "${CMAKE_BINARY_DIR}/rf_vendor_objects")
+file(MAKE_DIRECTORY "${RF_VENDOR_OBJECT_DIR}")
+execute_process(
+    COMMAND ${CMAKE_AR} x "${CMAKE_CURRENT_SOURCE_DIR}/../rf_basic/LIB/libCH58xBLE.a"
+    WORKING_DIRECTORY "${RF_VENDOR_OBJECT_DIR}"
+    COMMAND_ERROR_IS_FATAL ANY)
+file(GLOB RF_VENDOR_OBJECTS "${RF_VENDOR_OBJECT_DIR}/*.o")
+list(FILTER RF_VENDOR_OBJECTS EXCLUDE REGEX "/(tmos|tmos_hw|tmos_snv|ble_task_scheduler|ble_task_process)\\.o$")
+
 # Use relative path
 add_compile_options(-fmacro-prefix-map=${CMAKE_SOURCE_DIR}=..)
 
 
 set(SRC_FILES 
-"${CMAKE_CURRENT_SOURCE_DIR}/src/main.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/src/rf_main.c"
+"${CMAKE_CURRENT_SOURCE_DIR}/src/tmos_shim.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/Startup/Startup_CH585_FreeRTOS.S"
 "${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/portable/MemMang/heap_4.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/portable/GCC/RISC-V/port.c"
@@ -98,14 +112,15 @@ set(SRC_FILES
 "${CMAKE_CURRENT_SOURCE_DIR}/StdPeriphDriver/CH58x_usbdev.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/StdPeriphDriver/CH58x_usbhostBase.c"
 "${CMAKE_CURRENT_SOURCE_DIR}/StdPeriphDriver/CH58x_usbhostClass.c"
+${RF_VENDOR_OBJECTS}
 )
-set(CMAKE_C_FLAGS " -march=rv32imc_zba_zbb_zbc_zbs_xw -mabi=ilp32 -mcmodel=medany -msmall-data-limit=8 -mno-save-restore -fmax-errors=20 -Os -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common --param=highcode-gen-section-name=1 -g -I\"${CMAKE_CURRENT_SOURCE_DIR}/Startup\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/portable/GCC/RISC-V\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/portable\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/include\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/RVMSIS/\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/StdPeriphDriver/inc\" -DDEBUG=0 -std=gnu99")
+set(CMAKE_C_FLAGS " -march=rv32imc_zba_zbb_zbc_zbs_xw -mabi=ilp32 -mcmodel=medany -msmall-data-limit=8 -mno-save-restore -fmax-errors=20 -Os -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common --param=highcode-gen-section-name=1 -g -I\"${CMAKE_CURRENT_SOURCE_DIR}/Startup\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/portable/GCC/RISC-V\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/portable\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/include\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/RVMSIS/\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/StdPeriphDriver/inc\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/../rf_basic/LIB\" -DDEBUG=0 -DRF_TEST_MODE=${RF_TEST_MODE} -std=gnu99")
 set(CMAKE_CXX_FLAGS " -march=rv32imc_zba_zbb_zbc_zbs_xw -mabi=ilp32 -mcmodel=medany -msmall-data-limit=8 -mno-save-restore -fmax-errors=20 -Os -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common --param=highcode-gen-section-name=1 -g -std=gnu++11 -fabi-version=0")
 set(CMAKE_ASM_FLAGS " -march=rv32imc_zba_zbb_zbc_zbs_xw -mabi=ilp32 -mcmodel=medany -msmall-data-limit=8 -mno-save-restore -fmax-errors=20 -Os -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common --param=highcode-gen-section-name=1 -g -I\"${CMAKE_CURRENT_SOURCE_DIR}/RVMSIS/\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/Startup\" -I\"${CMAKE_CURRENT_SOURCE_DIR}/FreeRTOS/portable/GCC/RISC-V\" -x assembler-with-cpp -DENABLE_INTERRUPT_NEST=1")
 
 add_executable("${TARGET_ARTIFACT}" ${SRC_FILES})
 
-set_target_properties("${TARGET_ARTIFACT}" PROPERTIES LINK_FLAGS " -march=rv32imc_zba_zbb_zbc_zbs_xw -mabi=ilp32 -mcmodel=medany -msmall-data-limit=8 -mno-save-restore -fmax-errors=20 -Os -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common --param=highcode-gen-section-name=1 -g -T \"${CMAKE_CURRENT_SOURCE_DIR}/Ld/Link.ld\"  -L\"${CMAKE_CURRENT_SOURCE_DIR}/\" -L\"${CMAKE_CURRENT_SOURCE_DIR}/StdPeriphDriver/\"  -nostartfiles -Xlinker --gc-sections -Xlinker --print-memory-usage -Wl,-Map,\"FreeRTOS.map\" --specs=nano.specs --specs=nosys.specs -o \"FreeRTOS.elf\" ")
+set_target_properties("${TARGET_ARTIFACT}" PROPERTIES LINK_FLAGS " -march=rv32imc_zba_zbb_zbc_zbs_xw -mabi=ilp32 -mcmodel=medany -msmall-data-limit=8 -mno-save-restore -fmax-errors=20 -Os -fmessage-length=0 -fsigned-char -ffunction-sections -fdata-sections -fno-common --param=highcode-gen-section-name=1 -g -T \"${CMAKE_CURRENT_SOURCE_DIR}/Ld/Link.ld\"  -L\"${CMAKE_CURRENT_SOURCE_DIR}/\" -L\"${CMAKE_CURRENT_SOURCE_DIR}/StdPeriphDriver/\" -L\"${CMAKE_CURRENT_SOURCE_DIR}/../rf_basic/LIB\" -nostartfiles -Xlinker --gc-sections -Xlinker --print-memory-usage -Wl,-Map,\"RF_Basic_FreeRTOS.map\" --specs=nano.specs --specs=nosys.specs -o \"RF_Basic_FreeRTOS.elf\" ")
 
 target_link_libraries(
 "${TARGET_ARTIFACT}" 
@@ -114,8 +129,8 @@ ISP585
 
 add_custom_command(TARGET "${TARGET_ARTIFACT}" 
 POST_BUILD 
-COMMAND ${CMAKE_OBJCOPY} ARGS -O ihex  "FreeRTOS.elf" "FreeRTOS.hex"
-COMMAND ${CMAKE_OBJDUMP} ARGS  --all-headers --demangle --disassemble -M xw --line-numbers -D "FreeRTOS.elf" > "FreeRTOS.lst"
-COMMAND ${CMAKE_SIZE} ARGS  --format=berkeley "FreeRTOS.elf"
+COMMAND ${CMAKE_OBJCOPY} ARGS -O ihex  "RF_Basic_FreeRTOS.elf" "RF_Basic_FreeRTOS.hex"
+COMMAND ${CMAKE_OBJDUMP} ARGS  --all-headers --demangle --disassemble -M xw --line-numbers -D "RF_Basic_FreeRTOS.elf" > "RF_Basic_FreeRTOS.lst"
+COMMAND ${CMAKE_SIZE} ARGS  --format=berkeley "RF_Basic_FreeRTOS.elf"
 )
 

@@ -169,6 +169,7 @@ int main(void)
     GPIOA_ModeCfg(GPIO_Pin_15, GPIO_ModeIN_PU);
     GPIOA_ModeCfg(GPIO_Pin_14, GPIO_ModeOut_PP_5mA);
     UART0_DefInit();
+    UART0_BaudRateCfg(921600);
 #endif
     PRINT("start.\n");
 
