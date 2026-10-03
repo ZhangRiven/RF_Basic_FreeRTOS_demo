@@ -18,10 +18,10 @@ rf_basic/LIB/libCH58xBLE.a
 
 `tmos_shim.c` 只提供 `tmos_memcpy`、`tmos_memset`、`tmos_memcmp`、`tmos_strlen`，以及 RF 底层共享的 `ble[0x3c]` 与 `fnGetClockCBs` 控制块。它不提供事件队列、软件定时器、消息池、`TMOS_SystemProcess` 或 BLE 调度入口。
 
-构建选择由 CMake 缓存变量 `RF_TEST_MODE` 控制：`1` 是 TX（默认），`0` 是 RX。
+`freertos/src/rf_main.c:11:RF_TEST_MODE` 控制：`1` 是 TX，`0` 是 RX。
 
 ```bash
-cmake -S freertos -B build-rf -DRF_TEST_MODE=1
+cmake -S freertos -B build-rf
 cmake --build build-rf
 ```
 
@@ -62,7 +62,7 @@ rf_task()
 
 ## 4. TX、RX 与统计链
 
-### TX（`RF_TEST_MODE=1`）
+### TX（`RF_TEST_MODE==TX`）
 
 ```text
 TMR0 周期到达
@@ -77,7 +77,7 @@ TMR0 周期到达
                            └─ tx_count++
 ```
 
-### RX（`RF_TEST_MODE=0`）
+### RX（`RF_TEST_MODE==RX`）
 
 ```text
 rf_task() → rf_rx_start() → RFIP_SetRx(&rx_params)
